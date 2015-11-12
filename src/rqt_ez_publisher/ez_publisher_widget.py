@@ -15,23 +15,23 @@ class EzPublisherWidget(QtGui.QWidget):
     def __init__(self, parent=None, modules=[]):
         self._model = ez_model.EzPublisherModel(
             publisher.TopicPublisherWithTimer, modules=modules)
-        self._sliders = []
+        self._sliders_dict = {}
         QtGui.QWidget.__init__(self, parent=parent)
         self.setup_ui()
 
     def add_slider_from_combo(self):
         return self.add_slider_by_text(str(self._combo.currentText()))
-
+    
     def close_slider(self, widget, remove=True):
-        widget.hide()
-        if remove:
-            self._sliders.remove(widget)
-        self._main_vertical_layout.removeWidget(widget)
+        item = self.list_widget.takeItem(self.list_widget.row(self._sliders_dict[widget]))
+        del self._sliders_dict[widget]
+        del widget
+        del item
 
     def get_next_index(self, topic_name, attributes):
         array_index = 0
         text = ez_model.make_text(topic_name, attributes, array_index)
-        while text in [x.get_text() for x in self._sliders]:
+        while text in [x.get_text() for x in self._sliders_dict.keys()]:
             array_index += 1
             text = ez_model.make_text(topic_name, attributes, array_index)
         return array_index
@@ -54,37 +54,50 @@ class EzPublisherWidget(QtGui.QWidget):
             return False
         widget = widget_class(topic_name, attributes, array_index,
                               self._model.get_publisher(topic_name), self)
+        
         self._model.get_publisher(topic_name).set_manager(self)
-        self._sliders.append(widget)
+        item = QtGui.QListWidgetItem()
+        item.setSizeHint(QtCore.QSize(50, 50))
+        self.list_widget.addItem(item)
+        self._sliders_dict[widget] = item
+        
         if widget.add_button:
             widget.add_button.clicked.connect(
                 lambda: self.add_widget(
                     output_type, topic_name, attributes,
                     self.get_next_index(topic_name, attributes),
-                    self._main_vertical_layout.indexOf(widget) + 1))
+                    (self.list_widget.row(item)-1) + 1))
+
         if position:
-            self._main_vertical_layout.insertWidget(position, widget)
+            self.list_widget.setItemWidget(item, widget)
         else:
-            self._main_vertical_layout.addWidget(widget)
+            self.list_widget.setItemWidget(item, widget)
+
         return True
 
     def move_down_widget(self, widget):
+        print "move_down_widget"
+        """
         index = self._main_vertical_layout.indexOf(widget)
         if index < self._main_vertical_layout.count() - 1:
             self._main_vertical_layout.removeWidget(widget)
             self._main_vertical_layout.insertWidget(index + 1, widget)
+        """
 
     def move_up_widget(self, widget):
+        print "move_up_widget"
+        """
         index = self._main_vertical_layout.indexOf(widget)
         if index > 1:
             self._main_vertical_layout.removeWidget(widget)
             self._main_vertical_layout.insertWidget(index - 1, widget)
+        """
 
     def add_slider_by_text(self, text):
         if text.endswith('/header/seq'):
             rospy.loginfo('header/seq is not created')
             return
-        if text in [x.get_text() for x in self._sliders]:
+        if text in [x.get_text() for x in self._sliders_dict.keys()]:
             self.sig_sysmsg.emit('%s is already exists' % text)
             return
         results = self._model.register_topic_by_text(text)
@@ -102,15 +115,15 @@ class EzPublisherWidget(QtGui.QWidget):
                 self.add_slider_by_text(string)
 
     def get_sliders_for_topic(self, topic):
-        return [x for x in self._sliders if x.get_topic_name() == topic]
+        return [x for x in self._sliders_dict.keys() if x.get_topic_name() == topic]
 
     def get_sliders(self):
-        return self._sliders
+        return self._sliders_dict.keys()
 
     def clear_sliders(self):
-        for widget in self._sliders:
-            self.close_slider(widget, False)
-        self._sliders = []
+        self.list_widget.clear()
+        self._sliders_dict = {}
+
 
     def update_combo_items(self):
         self._combo.clear()
@@ -136,8 +149,12 @@ class EzPublisherWidget(QtGui.QWidget):
         horizontal_layout.addWidget(topic_label)
         horizontal_layout.addWidget(self._combo)
         horizontal_layout.addWidget(clear_button)
+        
+        self.list_widget = QtGui.QListWidget(self)
+        
         self._main_vertical_layout = QtGui.QVBoxLayout()
         self._main_vertical_layout.addLayout(horizontal_layout)
+        self._main_vertical_layout.addWidget(self.list_widget)
         self._main_vertical_layout.setAlignment(
             horizontal_layout, QtCore.Qt.AlignTop)
         self.setLayout(self._main_vertical_layout)
